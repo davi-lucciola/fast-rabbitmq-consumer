@@ -60,6 +60,10 @@ async def start_consumer():
     connection = await aio_pika.connect_robust(RABBIT_URL)
     channel = await connection.channel()
 
+    # This setting set how many 
+    # messages are gonna be processed by time. 
+    # await channel.set_qos(prefetch_count=1)
+
     # Exchanges
     exchange = await channel.declare_exchange("email.exchange", durable=True)
 
