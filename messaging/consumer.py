@@ -30,8 +30,8 @@ class RabbitMQConsumer(Consumer):
     async def _get_queue(self):
         channel = await rabbitmq_connection.get_channel()
 
-        exchange = await self.__get_exchange(channel)
-        queue = await channel.declare_queue(self.queue_name, durable=True)
+        exchange = await self.__get_exchange(channel)  # type: ignore
+        queue = await channel.declare_queue(self.queue_name, durable=True)  # type: ignore
 
         await queue.bind(exchange, routing_key=self.routing_key)  # type: ignore
 

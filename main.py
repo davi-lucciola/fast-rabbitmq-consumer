@@ -1,10 +1,10 @@
 import asyncio
 import logging
-from aio_pika import Message
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from contextlib import asynccontextmanager
 from db import mongo_db_connection
 from messaging.consumers.email import EmailConsumer
+from messaging.producers.email import EmailProducer
 from messaging.rabbitmq import rabbitmq_connection
 from models import SendEmailDTO, SendEmailPartialDTO
 
@@ -18,6 +18,11 @@ destination_emails = ["davi@email.com", "fernanda@email.com", "carlos@email.com"
 async def start_consumers():
     # AMPQ Setup
     LOGGER.info("Starting RabbitMQ consumers")
+
+    email_consumer = EmailConsumer()
+
+    await email_consumer.listen()
+
     LOGGER.info("RabbitMQ consumers startup complete")
 
 
@@ -26,8 +31,7 @@ async def lifespan(app: FastAPI):
     await mongo_db_connection.aconnect()
     await rabbitmq_connection.connect()
 
-    # email_consumer = EmailConsumer()
-    # await email_consumer.listen()
+    await start_consumers()
 
     yield
 
@@ -39,26 +43,16 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.post("/send-email")
-async def send_email_async(message_dto: SendEmailPartialDTO):
-    channel = await rabbitmq_connection.get_channel()
-    email_exchange = await channel.get_exchange("email.exchange")
-
+async def send_email_async(
+    message_dto: SendEmailPartialDTO,
+    email_producer: EmailProducer = Depends(EmailProducer),
+):
     async with asyncio.TaskGroup() as tasks:
         for destination in destination_emails:
-            tasks.create_task(
-                email_exchange.publish(
-                    message=Message(
-                        SendEmailDTO(
-                            sender_email=message_dto.sender_email,
-                            destination_email=destination,
-                            message=message_dto.message,
-                        )
-                        .model_dump_json()
-                        .encode("utf-8"),
-                        content_type="application/json",
-                    ),
-                    routing_key="",
-                )
+            send_email_dto = SendEmailDTO(
+                destination_email=destination, **message_dto.model_dump()
             )
 
-    return {"message": "Email enviado com sucesso."}
+            tasks.create_task(email_producer.send(send_email_dto))
+
+    return {"message": "Emails enviado com sucesso."}
